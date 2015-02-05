@@ -1,0 +1,26 @@
+{
+	"name":"Stripe",
+	"description":"Paypal issues an API username (generally your email), an API password, and an API signature. Check 'sandbox' to run in testing mode.",
+	"type":"com.stripe",
+	"seed":"StripeSeed",
+	"scope":["commerce"],
+	"compatibility":["single","multi"],
+	"interface":{
+		"single":"generate",
+		"multi":"docallback"
+	},
+	"dataTypes": {
+		"single": {
+			"api username":"string",
+			"api password":"string",
+			"api signature":"string",
+			"sandboxed":"bool"	
+		},
+		"multi": {
+			"username":"string",
+			"password":"string",
+			"signature":"string",
+			"sandboxed":"bool"	
+		}
+	}
+}
