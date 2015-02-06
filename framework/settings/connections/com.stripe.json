@@ -13,14 +13,14 @@
 		"single": {
 			"api username":"string",
 			"api password":"string",
-			"api signature":"string",
-			"sandboxed":"bool"	
+			"api signature":"string"	
 		},
 		"multi": {
-			"username":"string",
-			"password":"string",
-			"signature":"string",
-			"sandboxed":"bool"	
+			"redirect_uri":"string",
+			"client_id":"string",
+			"client_secret":"string",
+			"app_id":"string",
+			"api_key":"string"	
 		}
 	}
 }

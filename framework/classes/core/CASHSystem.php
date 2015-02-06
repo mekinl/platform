@@ -284,6 +284,7 @@
 			$json_settings = json_encode($cash_settings);
 			putenv("cashmusic_platform_settings=$json_settings");
 		} else {
+			//$cash_settings['instancetype'] = 'single'; //for testing single
 			// so we found the environment variable — if we're on file-based settings the 'system_connections'
 			// would be set. if we're purely environment variables they wouldn't be present, so we add them
 			if (!isset($cash_settings['system_connections'])) {

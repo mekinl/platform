@@ -1,24 +1,9 @@
 <?php
 /**
- * The PaypalSeed class speaks to the Paypal NVP API.
- *
- * @package platform.org.cashmusic
- * @author CASH Music
- * @link http://cashmusic.org/
- *
- * began with official Paypal SDK examples, much editing later...
- * original script(s) here:
- * https://cms.paypal.com/us/cgi-bin/?cmd=_render-content&content_ID=developer/library_download_sdks#NVP
- *
- * Copyright (c) 2013, CASH Music
- * Licensed under the GNU Lesser General Public License version 3.
- * See http://www.gnu.org/licenses/lgpl-3.0.html
- *
- *
- * This file is generously sponsored by Justin Miranda
+ * 
  *
  **/
-class PaypalSeed extends SeedBase {
+class StripeSeed extends SeedBase {
 	protected $api_username, $api_password, $api_signature, $api_endpoint, $api_version, $paypal_base_url, $error_message, $token;
 	protected $merchant_email = false;
 
@@ -59,35 +44,28 @@ class PaypalSeed extends SeedBase {
 
 	public static function getRedirectMarkup($data=false) {
 		$connections = CASHSystem::getSystemSettings('system_connections');
-		
-		// I don't like using ADMIN_WWW_BASE_PATH below, but as this call is always called inside the 
-		// admin I'm just going to do it. Without the full path in the form this gets all fucky 
-		// and that's no bueno.
-
-		if (isset($connections['com.paypal'])) {
-			$return_markup = '<h4>Paypal</h4>'
-						   . '<p>You\'ll need a verified Business or Premier Paypal account to connect properly. '
-						   . 'Those are free upgrades, so just double-check your address and enter it below. You '
-						   . 'can learn more about what they entail <a href="https://cms.paypal.com/cgi-bin/?cmd=_render-content&content_ID=developer/EC_setup_permissions">here</a>.</p>'
-						   . '<form accept-charset="UTF-8" method="post" id="paypal_connection_form" action="' . ADMIN_WWW_BASE_PATH . '/settings/connections/add/com.paypal">'
-						   . '<input type="hidden" name="dosettingsadd" value="makeitso" />'
-						   . '<input type="hidden" name="permission_type" value="accelerated" />'
-						   . '<input id="connection_name_input" type="hidden" name="settings_name" value="(Paypal)" />'
-						   . '<input type="hidden" name="settings_type" value="com.paypal" />'
-						   . '<label for="merchant_email">Your Paypal email address:</label>'
-						   . '<input type="text" name="merchant_email" id="merchant_email" value="" />'
-						   . '<br />'
-						   . '<div><input class="button" type="submit" value="Add The Connection" /></div>'
-						   . '</form>'
-						   . '<script type="text/javascript">'
-						   . '$("#paypal_connection_form").submit(function() {'
-						   . '	var newvalue = $("#merchant_email").val() + " (Paypal)";'
-						   . '	$("#connection_name_input").val(newvalue);'
-						   . '});'
-						   . '</script>';
+		if (isset($connections['com.stripe'])) {
+			error_log($connections['com.stripe']."********");
+			//will have to change login_url
+			$login_url = "https://connect.stripe.com/oauth/authorize?response_type=code&client_id=ca_5eCOhyxL07uaKmLYp44UPuAWzrPx1CKi";
+			$return_markup = '<h4>Stripe</h4>'
+						   . '<p>This will redirect you to a secure login at Stripe and bring you right back.</p>'
+						   . '<a href="' . $login_url . '" class="button">Connect your Stripe</a>';
 			return $return_markup;
 		} else {
-			return 'Please add default paypal api credentials.';
+			return 'Please add default stripe api credentials.';
+		}
+	}
+	public static function handleRedirectReturn($data=false) {
+		if (isset($data['code'])) {
+			$connections = CASHSystem::getSystemSettings('system_connections');
+			if (isset($connections['com.stripe'])) {
+				return 'Test successful will have to implement :(';
+			} else {
+				return 'Please add default google drive app credentials.';
+			}
+		} else {
+			return 'There was an error. (session) Please try again.';
 		}
 	}
 
