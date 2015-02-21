@@ -4,6 +4,7 @@
  *
  **/
 class StripeSeed extends SeedBase {
+	// These need to be fixed based on the call from commerceplant
 	protected $api_username, $api_password, $api_signature, $api_endpoint, $api_version, $paypal_base_url, $error_message, $token;
 	protected $merchant_email = false;
 	//Have to fix constructor based on what the charge method need
@@ -17,7 +18,6 @@ class StripeSeed extends SeedBase {
 			$this->api_username  = $this->settings->getSetting('username');
 			$this->api_password  = $this->settings->getSetting('password');
 			$this->api_signature = $this->settings->getSetting('signature');
-			$sandboxed           = $this->settings->getSetting('sandboxed');
 
 			if (!$this->api_username || !$this->api_password || !$this->api_signature) {
 				$connections = CASHSystem::getSystemSettings('system_connections');
@@ -26,7 +26,6 @@ class StripeSeed extends SeedBase {
 					$this->api_username   = $connections['com.paypal']['username'];
 					$this->api_password   = $connections['com.paypal']['password'];
 					$this->api_signature  = $connections['com.paypal']['signature'];
-					$sandboxed            = $connections['com.paypal']['sandboxed'];
 				}
 			}
 
@@ -34,10 +33,6 @@ class StripeSeed extends SeedBase {
 			
 			$this->api_endpoint = "https://api-3t.paypal.com/nvp";
 			$this->paypal_base_url = "https://www.paypal.com/webscr&cmd=";
-			if ($sandboxed) {
-				$this->api_endpoint = "https://api-3t.sandbox.paypal.com/nvp";
-				$this->paypal_base_url = "https://www.sandbox.paypal.com/webscr&cmd=";
-			}
 		} else {
 			$this->error_message = 'could not get connection settings';
 		}
@@ -95,7 +90,7 @@ class StripeSeed extends SeedBase {
 			//foreach ($resp as &$value) {
 			//	error_log($value);
 			//}
-			
+			error_log("****************".$credentials['access']."-------");
 				if (isset($credentials['refresh'])) {
 					$user_info = StripeSeed::getUserInfo($credentials['access']);
 					$new_connection = new CASHConnection(AdminHelper::getPersistentData('cash_effective_user'));
@@ -160,6 +155,12 @@ class StripeSeed extends SeedBase {
 		$auth_url = $client->getAuthorizeUri();
 		return $auth_url;	
 	}
+	
+	
+	
+	
+	
+	
 
 	
 
