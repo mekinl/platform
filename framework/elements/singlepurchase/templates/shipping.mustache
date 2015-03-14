@@ -111,11 +111,10 @@
 					document.getElementById('cashmusic-sp-overlay').style.display='block';
 
 					var submitUrl = window.location.protocol + '//' + window.location.host;
-					if (window.location.port) {
+					if (window.location.port&&submitUrl.indexOf("localhost") ==-1) {
 						submitUrl += ':' + window.location.port;
 					}
 					submitUrl += '/public/request/payload';
-
 					var ruo = document.createElement("input");
 					ruo.setAttribute("type", "hidden");
 					ruo.setAttribute("name", "return_url_only");

@@ -4,44 +4,34 @@
  *
  **/
 class StripeSeed extends SeedBase {
-	protected $api_username, $api_password, $api_signature, $api_endpoint, $api_version, $paypal_base_url, $error_message, $token;
-	protected $merchant_email = false;
-	//Have to fix constructor based on what the charge method need
+	protected $error_message, $token, $client_id, $redirect_uri, $client_secret,$publishable_key;
+	
 	public function __construct($user_id, $connection_id, $token=false) {
 		$this->settings_type = 'com.mailchimp';
-		error_log("********##Constructor called");
+		error_log("********## Stripe Constructor called");
 		$this->user_id = $user_id;
 		$this->connection_id = $connection_id;
 		if ($this->getCASHConnection()) {
-			$this->api_version   = '94.0';
-			$this->api_username  = $this->settings->getSetting('username');
-			$this->api_password  = $this->settings->getSetting('password');
-			$this->api_signature = $this->settings->getSetting('signature');
-			$sandboxed           = $this->settings->getSetting('sandboxed');
-
-			if (!$this->api_username || !$this->api_password || !$this->api_signature) {
+			$this->client_id  = $this->settings->getSetting('client_id');
+			$this->redirect_uri  = $this->settings->getSetting('redirect_uri');
+			$this->client_secret = $this->settings->getSetting('client_secret');
+			$this->publishable_key = $this->settings->getSetting('publishable_key');
+			if (!$this->client_id || !$this->redirect_uri || !$this->client_secret) {
 				$connections = CASHSystem::getSystemSettings('system_connections');
-				if (isset($connections['com.paypal'])) {
-					$this->merchant_email = $this->settings->getSetting('merchant_email'); // present in multi
-					$this->api_username   = $connections['com.paypal']['username'];
-					$this->api_password   = $connections['com.paypal']['password'];
-					$this->api_signature  = $connections['com.paypal']['signature'];
-					$sandboxed            = $connections['com.paypal']['sandboxed'];
+				if (isset($connections['com.stripe'])) {
+					$this->client_id   = $connections['com.stripe']['client_id'];
+					$this->redirect_uri   = $connections['com.stripe']['redirect_uri'];
+					$this->client_secret  = $connections['com.stripe']['client_secret'];
 				}
 			}
 
 			$this->token = $token;
 			
-			$this->api_endpoint = "https://api-3t.paypal.com/nvp";
-			$this->paypal_base_url = "https://www.paypal.com/webscr&cmd=";
-			if ($sandboxed) {
-				$this->api_endpoint = "https://api-3t.sandbox.paypal.com/nvp";
-				$this->paypal_base_url = "https://www.sandbox.paypal.com/webscr&cmd=";
-			}
 		} else {
 			$this->error_message = 'could not get connection settings';
 		}
 	}
+	
 
 	public static function getRedirectMarkup($data=false) {
 		$connections = CASHSystem::getSystemSettings('system_connections');
@@ -69,7 +59,7 @@ class StripeSeed extends SeedBase {
 			*/
 			// will be moved to method or new classes
 			if (isset($connections['com.stripe'])) {
-			 error_log($data['code']."*****)))");
+			 //error_log($data['code']."*****)))");
 			/* 
 			$token_request_body = array(
 				'grant_type' => 'authorization_code',
@@ -92,10 +82,10 @@ class StripeSeed extends SeedBase {
 								$connections['com.stripe']['client_id'],
 								$connections['com.stripe']['client_secret']);
 			//error_log("*******".$resp[access_token]);
-			//foreach ($resp as &$value) {
-			//	error_log($value);
+			//foreach ($credentials as $value => $v) {
+			//	error_log("\$a[$value] => $v.\n");
 			//}
-			
+			error_log($credentials['userid']);
 				if (isset($credentials['refresh'])) {
 					$user_info = StripeSeed::getUserInfo($credentials['access']);
 					$new_connection = new CASHConnection(AdminHelper::getPersistentData('cash_effective_user'));
@@ -103,7 +93,9 @@ class StripeSeed extends SeedBase {
 						$user_info['email'] . ' (Stripe)',
 						'com.stripe',
 						array(
-							'access_token'   => $credentials['access']
+							'access_token'   => $credentials['access'],
+							'publishable_key' => $credentials['publish'],
+							'user_id' => $credentials['userid']
 						)
 					);
 				if ($result) {
@@ -148,7 +140,12 @@ class StripeSeed extends SeedBase {
 		require_once(CASH_PLATFORM_ROOT.'/lib/stripe/StripeOAuth.class.php');
 		try {
 			$client = new StripeOAuth($client_id, $client_secret);
-			return $client->getTokens($authorization_code);
+			$token =  $client->getTokens($authorization_code);
+			$publishable = array(
+					'publish' => $client->getPublishableKey(),
+					'userid' => $client->getUserId()
+					);
+			return array_merge($token, $publishable);
 		} catch (Exception $e) {
 			return false;
 		}
@@ -160,7 +157,56 @@ class StripeSeed extends SeedBase {
 		$auth_url = $client->getAuthorizeUri();
 		return $auth_url;	
 	}
-
+	
+	public function setExpressCheckout(
+		$payment_amount,
+		$ordersku,
+		$ordername,
+		$return_url,
+		$cancel_url,
+		$request_shipping_info=true,
+		$allow_note=false,
+		$currency_id='USD', /* 'USD', 'GBP', 'EUR', 'JPY', 'CAD', 'AUD' */
+		$payment_type='Sale', /* 'Sale', 'Order', or 'Authorization' */
+		$invoice=false
+	) {
+		error_log("SetExpressCheckout Stripe");
+		// Set NVP variables:
+		$nvp_parameters = array(
+			'PAYMENTREQUEST_0_AMT' => $payment_amount,
+			'PAYMENTREQUEST_0_PAYMENTACTION' => $payment_type,
+			'PAYMENTREQUEST_0_CURRENCYCODE' => $currency_id,
+			'PAYMENTREQUEST_0_ALLOWEDPAYMENTMETHOD' => 'InstantPaymentOnly',
+			'PAYMENTREQUEST_0_DESC' => $ordername,
+			'RETURNURL' => $return_url,
+			'CANCELURL' => $cancel_url,
+			'L_PAYMENTREQUEST_0_AMT0' => $payment_amount,
+			'L_PAYMENTREQUEST_0_NUMBER0' => $ordersku,
+			'L_PAYMENTREQUEST_0_NAME0' => $ordername,
+			'NOSHIPPING' => '0',
+			'ALLOWNOTE' => '0',
+			'SOLUTIONTYPE' => 'Sole',
+			'LANDINGPAGE' => 'Billing'
+		);
+		if (!$request_shipping_info) {
+			$nvp_parameters['NOSHIPPING'] = 1;
+		}
+		if ($allow_note) {
+			$nvp_parameters['ALLOWNOTE'] = 1;
+		}
+		if ($invoice) {
+			$nvp_parameters['PAYMENTREQUEST_0_INVNUM'] = $invoice;
+		}
+		
+		$this->cash_base_url = CASH_PUBLIC_URL."/stripe.php";
+		$pk=$this->publishable_key;
+		$desc=$ordername;
+		$amnt=$payment_amount*100;
+		error_log($desc);
+		$stripe_url = $this->cash_base_url . "?desc=$desc&pk=$pk&amnt=$amnt&return_url=$return_url&cancel_url=$cancel_url";
+		return $stripe_url;
+	}
+	
 	
 
 	
