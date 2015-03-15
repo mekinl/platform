@@ -4,11 +4,10 @@
  *
  **/
 class StripeSeed extends SeedBase {
-	protected $error_message, $token, $client_id, $redirect_uri, $client_secret,$publishable_key;
+	protected $error_message, $token, $client_id, $redirect_uri, $client_secret,$publishable_key, $access_token;
 	
 	public function __construct($user_id, $connection_id, $token=false) {
 		$this->settings_type = 'com.mailchimp';
-		error_log("********## Stripe Constructor called");
 		$this->user_id = $user_id;
 		$this->connection_id = $connection_id;
 		if ($this->getCASHConnection()) {
@@ -16,6 +15,7 @@ class StripeSeed extends SeedBase {
 			$this->redirect_uri  = $this->settings->getSetting('redirect_uri');
 			$this->client_secret = $this->settings->getSetting('client_secret');
 			$this->publishable_key = $this->settings->getSetting('publishable_key');
+			$this->access_token = $this->settings->getSetting('access_token');
 			if (!$this->client_id || !$this->redirect_uri || !$this->client_secret) {
 				$connections = CASHSystem::getSystemSettings('system_connections');
 				if (isset($connections['com.stripe'])) {
@@ -24,7 +24,7 @@ class StripeSeed extends SeedBase {
 					$this->client_secret  = $connections['com.stripe']['client_secret'];
 				}
 			}
-
+	
 			$this->token = $token;
 			
 		} else {
@@ -158,6 +158,45 @@ class StripeSeed extends SeedBase {
 		return $auth_url;	
 	}
 	
+	public function getTokenInformation() {
+		if ($this->token) {
+			require_once(CASH_PLATFORM_ROOT.'/lib/stripe/Stripe.php');
+			Stripe::setApiKey($this->client_secret);
+			$tokenInfo = Stripe_Token::retrieve($this->token);
+			if (!$tokenInfo) {
+				$this->setErrorMessage('getTokenInformation failed: ' . $this->getErrorMessage());
+				return false;
+			} else {
+				return $tokenInfo;
+			}
+		} else {
+			$this->setErrorMessage("No token was found.");
+			return false;
+		}
+	}
+	
+
+
+	
+	public function doCharge($amount, $email) {
+		if ($this->token) {
+				require_once(CASH_PLATFORM_ROOT.'/lib/stripe/Stripe.php');
+				Stripe::setApiKey($this->client_secret);			
+				$charge = Stripe_Charge::create(array(
+				  "amount" => $amount*100,
+				  "currency" => "usd",
+				  "source" => $this->token, // obtained with Stripe.js
+				  "description" => "Charge for ".$email
+				));
+				return $charge;
+						
+		} else {
+			$this->setErrorMessage("No token was found.");
+			return false;
+		}
+	}
+	
+	
 	public function setExpressCheckout(
 		$payment_amount,
 		$ordersku,
@@ -202,12 +241,30 @@ class StripeSeed extends SeedBase {
 		$pk=$this->publishable_key;
 		$desc=$ordername;
 		$amnt=$payment_amount*100;
-		error_log($desc);
-		$stripe_url = $this->cash_base_url . "?desc=$desc&pk=$pk&amnt=$amnt&return_url=$return_url&cancel_url=$cancel_url";
+		$secretParams = "desc=$desc&pk=$pk&amnt=$amnt";
+		
+		$encryptedSecret = Stripeseed::cryptoJsAesEncrypt("cashmusic", $secretParams);
+		$stripe_url = $this->cash_base_url . "?return_url=$return_url&cancel_url=$cancel_url&param=".base64_encode($encryptedSecret);
 		return $stripe_url;
 	}
-	
-	
+/*
+ * copy from here
+http://stackoverflow.com/questions/24337317/encrypt-with-php-decrypt-with-javascript-cryptojs	
+*/
+	function cryptoJsAesEncrypt($passphrase, $value){
+	    $salt = openssl_random_pseudo_bytes(8);
+	    $salted = '';
+	    $dx = '';
+	    while (strlen($salted) < 48) {
+		$dx = md5($dx.$passphrase.$salt, true);
+		$salted .= $dx;
+	    }
+	    $key = substr($salted, 0, 32);
+	    $iv  = substr($salted, 32,16);
+	    $encrypted_data = openssl_encrypt(json_encode($value), 'aes-256-cbc', $key, true, $iv);
+	    $data = array("ct" => base64_encode($encrypted_data), "iv" => bin2hex($iv), "s" => bin2hex($salt));
+	    return json_encode($data);
+	}	
 
 	
 

@@ -1002,6 +1002,224 @@ class CommercePlant extends PlantBase {
 				}
 				break;
 
+				
+				
+				case 'com.stripe':
+					if (isset($_GET['token'])) {
+						$pp = new StripeSeed($order_details['user_id'],$transaction_details['connection_id'],$_GET['token']);
+						$initial_details = $pp->getTokenInformation();
+						if ($initial_details) {
+							$order_totals = $this->getOrderTotals($order_details['order_contents']);
+							if ($order_totals['price']) {
+								$final_details = $pp->doCharge($order_totals['price'], $initial_details['email']);
+								if ($final_details) {
+									// look for a user to match the email. if not present, make one
+									$user_request = new CASHRequest(
+										array(
+											'cash_request_type' => 'people', 
+											'cash_action' => 'getuseridforaddress',
+											'address' => $initial_details['email']
+										)
+									);
+									$user_id = $user_request->response['payload'];
+									if (!$user_id) {
+										$user_request = new CASHRequest(
+											array(
+												'cash_request_type' => 'system', 
+												'cash_action' => 'addlogin',
+												'address' => $initial_details['email'], 
+												'password' => time(),
+												'is_admin' => 0,
+												'display_name' => $initial_details['card']['name'],
+												'first_name' => $initial_details['card']['name'],
+												'last_name' => '',
+												'address_country' => $initial_details['card']['country']
+											)
+										);
+										$user_id = $user_request->response['payload'];
+									}
+									
+									// deal with physical quantities
+									if ($order_details['physical'] == 1) {
+										$order_items = json_decode($order_details['order_contents'],true);
+										if (is_array($order_items)) {
+											foreach ($order_items as $i) {
+												if ($i['available_units'] > 0 && $i['physical_fulfillment'] == 1) {
+													$item = $this->getItem($i['id']);
+													$available_units =
+													$this->editItem(
+														$i['id'],
+														false,
+														false,
+														false,
+														false,
+														false,
+														$item['available_units'] - 1
+													);
+												}
+											}
+										}
+									}
+
+									// record all the details
+									if ($order_details['digital'] == 1 && $order_details['physical'] == 0) {
+										// if the order is 100% digital just mark it as fulfilled
+										$is_fulfilled = 1;
+									} else {
+										// there's something physical. sorry dude. gotta deal with it still.
+										$is_fulfilled = 0;
+									}
+
+									$this->editOrder(
+										$order_id,
+										$is_fulfilled,
+										0,
+										false,
+										$initial_details['card']['country'],
+										$user_id
+									);
+									$this->editTransaction(
+										$order_details['transaction_id'],
+										strtotime($final_details['created']),
+										$final_details['id'], // not sure
+										json_encode($initial_details),
+										json_encode($final_details),
+										1,
+										$final_details['amount']/100,
+										0,
+										$final_details['status']
+									);
+									
+									// TODO: add code to order metadata
+									// bit of a hack, hard-wiring the email bits:
+									try {
+										if ($order_details['digital']) {
+											$addcode_request = new CASHRequest(
+												array(
+													'cash_request_type' => 'element', 
+													'cash_action' => 'addlockcode',
+													'element_id' => $order_details['element_id']
+												)
+											);
+
+											CASHSystem::sendEmail(
+												'Thank you for your order',
+												$order_details['user_id'],
+												$initial_details['email'],
+												'Your download of "' . $order_totals['description'] . '" is ready and can be found at: '
+												. CASHSystem::getCurrentURL() . '?cash_request_type=element&cash_action=redeemcode&code=' . $addcode_request->response['payload']
+												. '&element_id=' . $order_details['element_id'] . '&email=' . urlencode($initial_details['email']),
+												'Thank you.'
+											);
+										} else {
+											CASHSystem::sendEmail(
+												'Thank you for your order',
+												$order_details['user_id'],
+												$initial_details['email'],
+												'Your order is complete.' . "\n\n" . $order_totals['description'] . "\n\n" . ' Thank you.',
+												'Thank you.'
+											);
+										}
+									} catch (Exception $e) {
+										// TODO: handle the case where an email can't be sent. maybe display the download
+										//       code on-screen? that plus storing it with the order is probably enough
+									}
+									return true;
+								} else {
+									// make sure this isn't an accidentally refreshed page
+									if ($initial_details['used']){
+										$initial_details['ERROR_MESSAGE'] = $pp->getErrorMessage();
+										// there was an error processing the transaction
+										$this->editOrder(
+											$order_id,
+											0,
+											1
+										);
+										$this->editTransaction(
+											$order_details['transaction_id'],
+											strtotime($initial_details['created']),
+											$initial_details['id'],
+											false,
+											json_encode($initial_details),
+											0,
+											false,
+											false,
+											'error processing payment'
+										);
+										return false;
+									} else {
+										// this is a successful transaction with the user hitting refresh
+										// as long as it's within 30 minutes of the original return true, otherwise
+										// call it false and allow the page to expire
+										if (time() - strtotime($initial_details['created']) < 180) {
+											return true;
+										} else {
+											return false;
+										}
+									}
+								}
+							} else {
+								// insufficient funds — user changed amount?
+								$this->editOrder(
+									$order_id,
+									0,
+									1
+								);
+								$this->editTransaction(
+									$order_details['transaction_id'],
+									strtotime($initial_details['created']),
+									$initial_details['id'],
+									false,
+									json_encode($initial_details),
+									0,
+									false,
+									false,
+									'incorrect amount'
+								);
+								return false;
+							}
+						} else {
+							// order reporting failure
+							$this->editOrder(
+								$order_id,
+								0,
+								1
+							);
+							$this->editTransaction(
+								$order_details['transaction_id'],
+								strtotime($initial_details['created']),
+								$initial_details['id'],
+								false,
+								json_encode($initial_details),
+								0,
+								false,
+								false,
+								'payment failed'
+							);
+							return false;
+						}
+					} else {
+						// user canceled transaction
+						$this->editOrder(
+							$order_id,
+							0,
+							1
+						);
+						$this->editTransaction(
+							$order_details['transaction_id'],
+							time(),
+							false,
+							false,
+							false,
+							0,
+							false,
+							false,
+							'canceled'
+						);
+						return false;
+					}
+				
+				break;
 			default:
 				return false;
 		}
